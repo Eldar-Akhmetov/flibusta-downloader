@@ -1,0 +1,63 @@
+services:
+  downloader:
+    build: .
+    image: flibusta-archiver:latest
+    command: ["python", "downloader.py"]
+    init: true
+    environment:
+      FORUM_URL: ${FORUM_URL:-https://booktracker.org/viewforum.php?f=255}
+      COOKIE: ${COOKIE:-}
+      JOBS_DB: /state/jobs.sqlite3
+      DOWNLOAD_DIR: /downloads
+      FB2_QUEUE_DIR: /work/fb2_queue
+      DOWNLOADER_POLL_INTERVAL: ${DOWNLOADER_POLL_INTERVAL:-0}
+      LISTEN_PORT: ${LISTEN_PORT:-6881}
+      PAGE_DELAY: ${PAGE_DELAY:-2}
+      METADATA_TIMEOUT: ${METADATA_TIMEOUT:-180}
+      TORRENT_TIMEOUT: ${TORRENT_TIMEOUT:-86400}
+      DELETE_TORRENT_AFTER_QUEUE: ${DELETE_TORRENT_AFTER_QUEUE:-false}
+      JOBS_PER_BATCH: ${JOBS_PER_BATCH:-200}
+    volumes:
+      - ./downloads:/downloads
+      - ./work:/work
+      - ./state:/state
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=2G
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  converter:
+    build: .
+    image: flibusta-archiver:latest
+    command: ["python", "converter.py"]
+    init: true
+    depends_on: [downloader]
+    environment:
+      JOBS_DB: /state/jobs.sqlite3
+      FB2_QUEUE_DIR: /work/fb2_queue
+      OUTPUT_TXT_DIR: /output
+      CONVERT_WORKERS: ${CONVERT_WORKERS:-1}
+      CONVERT_TIMEOUT: ${CONVERT_TIMEOUT:-600}
+      CONVERT_POLL_INTERVAL: ${CONVERT_POLL_INTERVAL:-10}
+      STALE_RUNNING_SECONDS: ${STALE_RUNNING_SECONDS:-86400}
+      DELETE_FB2: ${DELETE_FB2:-false}
+    volumes:
+      - ./work:/work
+      - ./txt_books:/output
+      - ./state:/state
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=2G
+    restart: unless-stopped
+    stop_grace_period: 60s
+    deploy:
+      replicas: ${CONVERT_REPLICAS:-2}
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048M
